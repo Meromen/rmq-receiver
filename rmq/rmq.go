@@ -39,6 +39,7 @@ func PhotoWorker(ctx *context.Context, msgChan *<-chan amqp.Delivery, wg *sync.W
 					if exist {
 						log.Println("Photo Exists")
 						msg.Ack(false)
+						return
 					} else {
 						err = util.DownloadFile(fmt.Sprintf("photos/%s_%s.jpg", photo.Id, photo.IdempotencyKey), photo.Url)
 						if err != nil {
@@ -52,9 +53,7 @@ func PhotoWorker(ctx *context.Context, msgChan *<-chan amqp.Delivery, wg *sync.W
 							return
 						}
 
-						if err == nil {
-							log.Printf("Photo downloaded")
-						}
+						log.Printf("Photo downloaded")
 
 						msg.Ack(false)
 					}

@@ -52,8 +52,8 @@ func main() {
 	defer mqch.Close()
 
 	q, err := mqch.QueueDeclare(
-		"photo",
-		false,
+		"photos",
+		true,
 		false,
 		false,
 		false,
