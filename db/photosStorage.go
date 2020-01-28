@@ -7,7 +7,8 @@ const (
 		CREATE TABLE IF NOT EXISTS photos (
 			"id" TEXT PRIMARY KEY,
 			"url" TEXT,
-			"idempotency_key" TEXT
+			"idempotency_key" TEXT,
+			"file_path" TEXT
 		);
 	`
 	dropPhotosTableQuery string = `
@@ -16,7 +17,7 @@ const (
 
 	insertPhotoQuery = `
 		INSERT INTO photos
-		VALUES($1, $2, $3);
+		VALUES($1, $2, $3, $4);
 	`
 
 	checkExistQuery = `
@@ -77,7 +78,7 @@ func (s *PhotosStorage) InsertPhoto(photo *Photo) error {
 		return err
 	}
 
-	_, err = bdTx.Exec(insertPhotoQuery, photo.Id, photo.Url, photo.IdempotencyKey)
+	_, err = bdTx.Exec(insertPhotoQuery, photo.Id, photo.Url, photo.IdempotencyKey, photo.FilePath)
 	if err != nil {
 		return err
 	}
