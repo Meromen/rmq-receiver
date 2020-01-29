@@ -22,7 +22,7 @@ const (
 
 	checkExistQuery = `
 		SELECT * FROM photos
-		WHERE "id" = $1 AND "idempotencyKey" = $2;
+		WHERE "id" = $1 AND "idempotency_key" = $2;
 	`
 )
 
@@ -30,8 +30,13 @@ type PhotosStorage struct {
 	conn *sql.DB
 }
 
-func NewPhotoStorage(conn *sql.DB) PhotosStorage {
-	return PhotosStorage{conn: conn}
+func NewPhotoStorage(conn *sql.DB) (PhotosStorage, error) {
+	storage := PhotosStorage{conn: conn}
+	err := storage.CreateTable()
+	if err != nil {
+		return PhotosStorage{}, err
+	}
+	return PhotosStorage{conn: conn}, nil
 }
 
 func (s *PhotosStorage) CreateTable() error {
@@ -95,7 +100,7 @@ func (s *PhotosStorage) CheckExisting(id string, idempotencyKey string) bool {
 	row := s.conn.QueryRow(checkExistQuery, id, idempotencyKey)
 
 	photo := Photo{}
-	if err := row.Scan(&photo.Id, &photo.Url, &photo.IdempotencyKey); err != nil {
+	if err := row.Scan(&photo.Id, &photo.Url, &photo.IdempotencyKey, &photo.FilePath); err != nil {
 		return false
 	}
 
