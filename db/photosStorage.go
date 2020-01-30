@@ -77,7 +77,8 @@ func (s *PhotosStorage) DropTable() error {
 	return nil
 }
 
-func (s *PhotosStorage) InsertPhoto(photo *Photo) error {
+func (s *PhotosStorage) Insert(row interface{}) error {
+	photo := (row).(Photo)
 	bdTx, err := s.conn.Begin()
 	if err != nil {
 		return err
@@ -96,8 +97,9 @@ func (s *PhotosStorage) InsertPhoto(photo *Photo) error {
 	return nil
 }
 
-func (s *PhotosStorage) CheckExisting(id string, idempotencyKey string) bool {
-	row := s.conn.QueryRow(checkExistQuery, id, idempotencyKey)
+func (s *PhotosStorage) CheckExisting(obj interface{}) bool {
+	newPhoto := (obj).(Photo)
+	row := s.conn.QueryRow(checkExistQuery, newPhoto.Id, newPhoto.IdempotencyKey)
 
 	photo := Photo{}
 	if err := row.Scan(&photo.Id, &photo.Url, &photo.IdempotencyKey, &photo.FilePath); err != nil {

@@ -16,3 +16,10 @@ func Connect(connStr *string) (*sql.DB, error) {
 	db, err := sql.Open("postgres", *connStr)
 	return db, err
 }
+
+type Storage interface {
+	CreateTable() error
+	DropTable() error
+	Insert(interface{}) error
+	CheckExisting(interface{}) bool
+}

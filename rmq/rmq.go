@@ -8,8 +8,16 @@ import (
 	"github.com/meromen/rm-receiver/util"
 	"github.com/streadway/amqp"
 	"log"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 )
+
+type RmqConfig struct {
+	url       string
+	queueName string
+}
 
 type RmqService struct {
 	conn    *amqp.Connection
@@ -19,8 +27,15 @@ type RmqService struct {
 	wg      sync.WaitGroup
 }
 
-func NewRmqConnection(url string) (*amqp.Connection, error) {
-	conn, err := amqp.Dial(url)
+func NewRmqConfig(queueName string) RmqConfig {
+	return RmqConfig{
+		url:       "amqp://guest:guest@localhost:5672/",
+		queueName: queueName,
+	}
+}
+
+func NewRmqConnection(config RmqConfig) (*amqp.Connection, error) {
+	conn, err := amqp.Dial(config.url)
 	if err != nil {
 		return &amqp.Connection{}, err
 	}
@@ -37,9 +52,9 @@ func NewRmqChannel(conn *amqp.Connection) (*amqp.Channel, error) {
 	return mqch, nil
 }
 
-func NewRmqQueue(mqch *amqp.Channel, name string) (amqp.Queue, error) {
+func NewRmqQueue(mqch *amqp.Channel, config RmqConfig) (amqp.Queue, error) {
 	q, err := mqch.QueueDeclare(
-		name,
+		config.queueName,
 		true,
 		false,
 		false,
@@ -70,28 +85,8 @@ func NewRqmMsgChan(mqch *amqp.Channel, q amqp.Queue) (<-chan amqp.Delivery, erro
 	return msgs, nil
 }
 
-func NewRmqService(url string, queueName string) (*RmqService, error) {
+func NewRmqService(conn *amqp.Connection, mqch *amqp.Channel, q amqp.Queue, msgs <-chan amqp.Delivery) (*RmqService, error) {
 	err := util.CreateDirIfNotExists("photos")
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := NewRmqConnection(url)
-	if err != nil {
-		return nil, err
-	}
-
-	mqch, err := NewRmqChannel(conn)
-	if err != nil {
-		return nil, err
-	}
-
-	q, err := NewRmqQueue(mqch, queueName)
-	if err != nil {
-		return nil, err
-	}
-
-	msgs, err := NewRqmMsgChan(mqch, q)
 	if err != nil {
 		return nil, err
 	}
@@ -105,24 +100,37 @@ func NewRmqService(url string, queueName string) (*RmqService, error) {
 	}, nil
 }
 
-func (rs *RmqService) ReceiverStart(workerCount int, ctx *context.Context, storage db.PhotosStorage) {
+func (rs *RmqService) ReceiverStart(workerCount int, serviceStop *context.CancelFunc, storage db.Storage) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	ctxWriter, cancelWriter := context.WithCancel(context.Background())
+
+	go func() {
+		<-ch
+
+		rs.ReceiverStop(&cancelWriter, serviceStop)
+	}()
+
 	rs.wg.Add(workerCount)
 
 	for i := 0; i < workerCount; i++ {
-		go PhotoWorker(ctx, &rs.msgChan, &rs.wg, storage)
+		go PhotoWorker(&ctxWriter, &rs.msgChan, &rs.wg, storage)
 	}
 }
 
-func (rs *RmqService) ReceiverStop(ctxCancel *context.CancelFunc) {
+func (rs *RmqService) ReceiverStop(ctxCancel *context.CancelFunc, serviceStop *context.CancelFunc) {
 
 	(*ctxCancel)()
 
 	rs.wg.Wait()
 
+	rs.conn.Close()
+
+	(*serviceStop)()
 	log.Println("All workers stopped")
 }
 
-func PhotoWorker(ctx *context.Context, msgChan *<-chan amqp.Delivery, wg *sync.WaitGroup, photoStorage db.PhotosStorage) {
+func PhotoWorker(ctx *context.Context, msgChan *<-chan amqp.Delivery, wg *sync.WaitGroup, storage db.Storage) {
 	for {
 		select {
 		case <-(*ctx).Done():
@@ -146,7 +154,7 @@ func PhotoWorker(ctx *context.Context, msgChan *<-chan amqp.Delivery, wg *sync.W
 					}
 					photo.FilePath = fmt.Sprintf("photos/%s_%s.jpg", photo.Id, photo.IdempotencyKey)
 
-					exist := photoStorage.CheckExisting(photo.Id, photo.IdempotencyKey)
+					exist := storage.CheckExisting(photo)
 					if exist {
 						log.Println("Photo Exists")
 						msg.Ack(false)
@@ -158,7 +166,7 @@ func PhotoWorker(ctx *context.Context, msgChan *<-chan amqp.Delivery, wg *sync.W
 							return
 						}
 
-						err := photoStorage.InsertPhoto(&photo)
+						err := storage.Insert(photo)
 						if err != nil {
 							log.Printf("Failed to insert: %s", err)
 							return
