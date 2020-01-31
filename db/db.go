@@ -17,9 +17,13 @@ func Connect(connStr *string) (*sql.DB, error) {
 	return db, err
 }
 
+type DataRow interface {
+	GetId() string
+}
+
 type Storage interface {
 	CreateTable() error
 	DropTable() error
-	Insert(interface{}) error
-	CheckExisting(interface{}) bool
+	Insert(DataRow) error
+	CheckExisting(DataRow) bool
 }

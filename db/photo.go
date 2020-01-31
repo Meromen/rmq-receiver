@@ -6,3 +6,7 @@ type Photo struct {
 	IdempotencyKey string
 	FilePath       string
 }
+
+func (p Photo) GetId() string {
+	return p.Id
+}

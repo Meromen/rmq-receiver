@@ -1,15 +1,14 @@
 package main
 
 import (
-	"context"
 	"github.com/meromen/rm-receiver/db"
+	"github.com/meromen/rm-receiver/service"
 	"log"
 )
 
 var WORKER_COUNT = 5
-func main() {
-	ctxDone, serviceStop := context.WithCancel(context.Background())
 
+func main() {
 	dbConn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
@@ -22,12 +21,10 @@ func main() {
 		log.Fatalf("Failed to create photo storage: %s", err)
 	}
 
-	rmqService, err := InitializeRmqService( "photos")
+	rmqService, err := service.InitializeRmqService("amqp://guest:guest@localhost:5672/", "photos")
 	if err != nil {
-		log.Fatalf("Failed to start rmq service: %s", err)
+		log.Fatalf("Failed to start service service: %s", err)
 	}
 
-	rmqService.ReceiverStart(WORKER_COUNT, &serviceStop, &photoStorage)
-
-	<-ctxDone.Done()
+	rmqService.ReceiverStart(WORKER_COUNT, &photoStorage)
 }
